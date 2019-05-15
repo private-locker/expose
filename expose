@@ -1,0 +1,171 @@
+#!/bin/bash
+#
+# REDD's Fail2Ban Attackers Spotlight
+#
+# Project of Private-Locker.com by REDD
+#
+
+# Set this Variable to your NGINX/Apache2 Hosted Directory.
+WWWDIR="/home/web"
+PAGECONTENT="$HOME/logs/pagecontent.txt"
+
+# Title of the HTML Page and Title on the Page.
+TITLE="Exposing Attackers IP's"
+
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 
+   exit 1
+fi
+if ! [ -x "$(command -v python)" ]; then
+  echo 'Error: python is not installed.' >&2
+  echo "Attempting to install python.."
+  apt-get install python -y
+fi
+if ! [ -x "$(command -v pip)" ]; then
+  echo 'Error: python is not installed.' >&2
+  echo "Attempting to install pip.."
+  apt-get install python-setuptools python-dev build-essential -y
+  pip install geoip
+fi
+if ! [ -x "$(command -v git)" ]; then
+  echo 'Error: git is not installed.' >&2
+  echo "Attempting to install git.."
+  apt-get install git -y
+fi
+echo "Checking Files.."
+mkdir -p $HOME/logs
+if [ -e $HOME/logs/geoip.py ]; then
+    echo "Geoip.py Located..";
+    if [ -e $HOME/logs/GeoIPASNum.dat ]; then
+	echo "GeoIPASNum.dat Located..";
+    else
+        echo "Attempting to download GeoIP Python Script from Github.. "
+	git clone https://github.com/philhagen/ip2geo.git $HOME/geo
+	echo "Moving Content.."
+	cd $HOME/geo
+	cp -rf $HOME/geo/ip2geo.py $HOME/logs/geoip.py
+	cd $HOME/logs
+	echo "Removing Old Directories and excess files."
+        rm -rf $HOME/geo
+        echo "Downloading GeoIP Databases.."
+	python $HOME/logs/geoip.py -d
+        echo "Done.."
+	cd $HOME
+    fi
+    if [ -e $HOME/logs/GeoLiteCity.dat ]; then
+        echo "GeoLiteCity.dat Located..";
+    else
+        echo "Attempting to download GeoIP Python Script from Github.. "
+        git clone https://github.com/philhagen/ip2geo.git $HOME/geo
+        echo "Moving Content.."
+        cd $HOME/geo
+        cp -rf $HOME/geo/ip2geo.py $HOME/logs/geoip.py
+        cd $HOME/logs
+        echo "Removing Old Directories and excess files."
+	rm -rf $HOME/geo
+	echo "Downloading GeoIP Databases.."
+        python $HOME/logs/geoip.py -d
+        echo "Done.."
+	cd $HOME
+    fi
+    else
+        echo "Attempting to download GeoIP Python Script from Github.. "
+        git clone https://github.com/philhagen/ip2geo.git $HOME/geo
+        echo "Moving Content.."
+        cd $HOME/geo
+        cp -rf $HOME/geo/ip2geo.py $HOME/logs/geoip.py
+        cd $HOME/logs
+        echo "Removing Old Directories and excess files."
+        rm -rf $HOME/geo
+        echo "Downloading GeoIP Databases.."
+        python $HOME/logs/geoip.py -d
+	echo "Done.."
+        cd $HOME
+fi
+cd /var/log
+awk '($(NF-1) = /Ban/){print $NF}' /var/log/fail2ban.log* | sort | uniq -c | sort -n >$HOME/logs/htmllog.txt
+awk '{$1=""; print $0}' $HOME/logs/htmllog.txt >$HOME/logs/temp.txt
+GEO=$( cat $HOME/logs/temp.txt | python $HOME/logs/geoip.py -g $HOME/logs -f '<b><u><i><a href="https://viewdns.info/whois/?domain=%ip">%ip</a></i></u></b> <ul type="circle"><font color="gray"> %asname - %ci, %rc, %cc3</font></ul>')
+echo "$GEO" >$HOME/logs/final.txt
+cd $HOME
+echo "Done."
+TEMP=$HOME/logs/index.html
+DATE=$(date -u)
+echo "<html>" > $TEMP
+echo "<title>$TITLE" >> $TEMP
+echo "</title>" >> $TEMP
+echo "<meta name="viewport" content="width=device-width, initial-scale=1.0">" >> $TEMP
+echo "<meta name="theme-color" content="#000000">" >> $TEMP
+echo "<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/brands.css">" >> $TEMP
+echo "<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/fontawesome.css">" >> $TEMP
+echo "<style>" >> $TEMP
+echo "body {" >> $TEMP
+echo "  background-color: black;" >> $TEMP
+echo "  color: white;" >> $TEMP
+echo "  padding: 20px;" >> $TEMP
+echo "  font-family: 'Source Sans Pro', sans-serif;" >> $TEMP
+echo "}" >> $TEMP
+echo "a:link{text-decoration:underline; color:#fbd5b5;font-family: 'Source Sans Pro', sans-serif;}" >> $TEMP
+echo "a:visited{text-decoration:underline; color:#ddd9c3;font-family: 'Source Sans Pro', sans-serif;}" >> $TEMP
+echo "a:hover{text-decoration:underline; color:#00b0f0;font-family: 'Source Sans Pro', sans-serif;}" >> $TEMP
+echo "footer {" >> $TEMP
+echo " text-align: center;" >> $TEMP
+echo " color:#fbd5b5;" >> $TEMP
+echo " font-family: 'Source Sans Pro', sans-serif;" >> $TEMP
+echo " font-size: 11px;" >> $TEMP
+echo " vertical-align: bottom" >> $TEMP
+echo " border-top: 1px solid red;" >> $TEMP
+echo " height: 60px;" >> $TEMP
+echo " padding-top: 20px;" >> $TEMP
+echo " display: block;" >> $TEMP
+echo " margin-top: 20px;" >> $TEMP
+echo " box-sizing: border-box;" >> $TEMP
+echo " position: relative;" >> $TEMP
+echo " width: 100%;" >> $TEMP
+echo "}" >> $TEMP
+echo "</style>" >> $TEMP
+echo "<body>" >> $TEMP
+echo "<center>" >> $TEMP
+echo "<br>" >> $TEMP
+echo "<h1>$TITLE</h1>" >> $TEMP
+echo "<br>" >> $TEMP
+echo "<font>" >> $TEMP
+echo "<br>" >> $TEMP
+if [ -e "$PAGECONTENT" ]; then
+	cat "$PAGECONTENT" >> $TEMP
+fi
+echo "<br>" >> $TEMP
+echo "<br>" >> $TEMP
+echo "<font size="1px">*This Page refreshes logs every 5 mins." >> $TEMP
+echo "</font>" >> $TEMP
+echo "<br>" >> $TEMP
+echo "<br>" >> $TEMP
+echo "<b>Refresh Time</b>: $DATE" >> $TEMP
+echo "<br>" >> $TEMP
+echo "<br>" >> $TEMP
+echo "<table width="85%" style="0">" >> $TEMP
+while read line
+do
+        echo "<tr>" >> $TEMP
+        echo "<td><font size="2px">" >> $TEMP
+        echo $line >> $TEMP
+        echo "</font></td>" >> $TEMP
+        echo "</tr>" >> $TEMP
+done < "/root/logs/final.txt"
+echo "</table>" >> $TEMP
+echo "</center>" >> $TEMP
+echo "</font>" >> $TEMP
+echo "<footer>" >> $TEMP
+echo "<a href="https://github.com/private-locker">Follow Private-Locker on GitHub.com</a>" >> $TEMP
+echo "</footer>" >> $TEMP
+echo "</body>" >> $TEMP
+echo "</html>" >> $TEMP
+echo "Copying.."
+cp -rf $HOME/logs/index.html $WWWDIR
+echo "Cleaning Up.."
+rm -rf $HOME/logs/index.html
+rm -rf $HOME/logs/htmllog.txt
+rm -rf $HOME/logs/temp.txt
+rm -rf $HOME/logs/final.txt
+echo "Script Complete."
+exit
